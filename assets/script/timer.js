@@ -1,6 +1,6 @@
 import {timer} from 'rxjs';
 import {take} from 'rxjs/operators';
-
+import {subtract, divide} from 'lodash';
 cc.Class({
     extends: cc.Component,
 
@@ -26,34 +26,52 @@ cc.Class({
     onLoad() {
         this.progressBarSprite = this.progressBarBarNode.getComponent(cc.Sprite);
 
-        let takeCount = Math.floor(15000 / 30);// (millisecond / fps)
-        let source = timer(0, 30).pipe(take(takeCount + 1));
-        source.subscribe(this.onSetTimer.bind(this));
+        this.sendPerMiliSecond = 20;
+        this.intervalTime = 1000;
+        this.totalTime = 15000;
 
-        let labelSource = timer(0, 1000).pipe(take(16));
-        labelSource.subscribe(this.onSetTimeLabel.bind(this));
+
+        /**
+         * 舉例: 共要跑 15000 ms, 每 20 ms 送一次count(從0開始++), 則總共會 count 15000 / 20 = 750次
+         * 共要改變兩種類型顏色: red, green; 所以一個顏色要改變 750 / 2 = 375 次
+         */
+        this.totalChangeTimes = divide(this.totalTime, this.sendPerMiliSecond);
+        this.colorChangeTimes = divide(this.totalChangeTimes, 2);
+        this.colorChangeUnitStep = 255 / this.colorChangeTimes;//每count一次,顏色要變化的數值
+
+        /**
+         * 要取幾次 Rxjs送出來的數字;
+         */
+        let takeCount = Math.floor(this.totalTime / this.sendPerMiliSecond);// (millisecond / send frequency)
+        let source = timer(0, 20).pipe(take(takeCount + 1));
+        source.subscribe(this.onSetTimer.bind(this));
     },
 
     onSetTimer(evt) {
-        let unitCount = 30 / 15000;
+        let isChangeTimeLabel = (evt * this.sendPerMiliSecond) % this.intervalTime;//確認是否有被1000ms整除
+        let unitCount = this.sendPerMiliSecond / this.totalTime;//每一個count要增加的數量
         this.progressBarSprite.fillRange = 1 - unitCount * evt;
-    },
 
-    onSetTimeLabel(evt) {
-        let countTime = 15 - evt;
-        this.countDownNum.string = countTime;
-        if (countTime > 9) {
-            this._setNodeColor(2);
-        } else if (countTime < 6) {
-            this._setNodeColor(0);
-        } else {
-            this._setNodeColor(1);
+        if(isChangeTimeLabel === 0) this.countDownNum.string = divide(subtract(this.totalTime, evt * this.sendPerMiliSecond), this.intervalTime);
+
+
+        let redGradient = Math.floor(this.colorChangeUnitStep * evt);
+        let greenGradient = 255;
+
+        if(redGradient > 255){
+            greenGradient = Math.floor(this.colorChangeUnitStep * (this.totalChangeTimes - evt));
+            redGradient = 255;
+            greenGradient < 0 ? greenGradient = 0 : greenGradient;
         }
+
+        // console.log('red = ' + redGradient + ' green = ' + greenGradient);
+        this._setNodeColor(redGradient, greenGradient, 0);
+
     },
 
-    _setNodeColor(colorIndex) {
-        this.progressBarBgNode.color = this.barColor[colorIndex];
-        this.progressBarBarNode.color = this.barColor[colorIndex];
-        this.countDownNum.node.color = this.barColor[colorIndex];
+    _setNodeColor(red, green, blue) {
+        this.progressBarBgNode.color = cc.color(red, green, blue);
+        this.progressBarBarNode.color = cc.color(red, green, blue);
+        this.countDownNum.node.color = cc.color(red, green, blue);
     }
 });
